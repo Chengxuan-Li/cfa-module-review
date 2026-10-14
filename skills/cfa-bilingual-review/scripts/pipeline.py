@@ -65,6 +65,7 @@ def calculate(expression, variables):
 
 
 def validate(data):
+    roles = json.loads((ROOT / 'assets/theme.json').read_text())['roles']
     require(data.get('schema_version') == 1, 'Expected schema_version 1')
     require(data.get('mode') in ('curriculum', 'public-demo'), 'mode must be curriculum or public-demo')
     for key in ('title', 'scope', 'curriculum_year', 'level'):
@@ -88,6 +89,24 @@ def validate(data):
         for r in c['references']:
             require(r['source'] in ids and r.get('locator'), f'{c["id"]}: unknown source or missing locator')
         e = c.get('example', {})
+        for term in c.get('equation_terms', []):
+            require(term.get('role') in roles and term.get('text') in c['formula'], f'{c["id"]}: invalid equation term or color role')
+        if e.get('balance_sheet'):
+            sheet = e['balance_sheet']
+            require(sheet.get('date') and sheet.get('entity') and sheet.get('unit'), 'Balance sheet needs entity, date and currency unit')
+            rows = sheet.get('rows', [])
+            require(1 <= len(rows) <= 5, 'Compact balance sheet supports at most five rows; split larger statements')
+            row_ids = {r['id'] for r in rows}
+            require(len(row_ids) == len(rows), 'Balance-sheet row IDs must be unique')
+            for row in rows:
+                require(row.get('label') and row.get('role') in roles and type(row.get('amount')) in (int, float) and math.isfinite(row['amount']), 'Invalid balance-sheet row')
+            values = {r['id']: r['amount'] for r in rows}
+            for row in rows:
+                if row.get('components'):
+                    require(all(k in row_ids and k != row['id'] for k in row['components']), 'Unknown balance-sheet component')
+                    require(math.isclose(sum(values[k] for k in row['components']), row['amount'], abs_tol=1e-8), 'Balance-sheet subtotal does not reconcile')
+            require(all(sheet.get(k) in row_ids for k in ('assets', 'liabilities', 'equity')), 'Balance sheet must identify A, L and E totals')
+            require(math.isclose(values[sheet['assets']], values[sheet['liabilities']] + values[sheet['equity']], abs_tol=1e-8), 'Balance sheet does not balance')
         require(e.get('origin') in ('original', 'source'), f'{c["id"]}: label example origin')
         require(all(e.get(k) for k in ('prompt', 'solution', 'interpretation')), f'{c["id"]}: incomplete example')
         if e['origin'] == 'source':
@@ -104,6 +123,29 @@ def validate(data):
                     f'{c["id"]}: example arithmetic failed: {actual} != {check["expected"]}')
             require(check.get('display') and check['display'] in e['solution'], 'Each checked result must appear in the displayed solution')
     return data
+
+
+def color_runs(text, terms, palette, base_color):
+    """Longest-token matching with Latin boundaries; leave operators and unrelated text neutral."""
+    aliases = {}
+    for term in terms:
+        for token in [term['text'], *term.get('aliases', [])]:
+            require(token not in aliases or aliases[token] == term['role'], f'Ambiguous color mapping: {token}')
+            aliases[token] = term['role']
+    if not aliases:
+        return [{'text': text, 'color': base_color}]
+    pattern = '|'.join((r'(?<![A-Za-z0-9_])' if re.match(r'[A-Za-z0-9_]', token) else '') + re.escape(token) +
+                       (r'(?![A-Za-z0-9_])' if re.search(r'[A-Za-z0-9_]$', token) else '')
+                       for token in sorted(aliases, key=len, reverse=True))
+    result, cursor = [], 0
+    for match in re.finditer(pattern, text):
+        if match.start() > cursor:
+            result.append({'text': text[cursor:match.start()], 'color': base_color})
+        result.append({'text': match.group(), 'color': palette[aliases[match.group()]]})
+        cursor = match.end()
+    if cursor < len(text):
+        result.append({'text': text[cursor:], 'color': base_color})
+    return result
 
 
 def wrap(text, font, width):
@@ -124,7 +166,7 @@ def wrap(text, font, width):
 
 def make_plan(data, font_file, family):
     theme = json.loads((ROOT / 'assets/theme.json').read_text())
-    result = {'font_family': family, 'concise': [], 'expanded': []}
+    result = {'font_family': family, 'theme': theme, 'concise': [], 'expanded': []}
     font = FontToolsFont(font_file, fontNumber=0)
     font_names = {n.toUnicode().casefold() for n in font['name'].names if n.nameID in (1, 16)}
     require(family.casefold() in font_names, f'Font family {family} does not match selected font file')
@@ -134,7 +176,7 @@ def make_plan(data, font_file, family):
     for variant in VARIANTS:
         for index, c in enumerate(data['concepts'], 1):
             boxes = []
-            def add(name, text, x, y, w, h, size=24, color=None, bold=False):
+            def add(name, text, x, y, w, h, size=24, color=None, bold=False, semantic=False):
                 missing = {ch for ch in text if not ch.isspace() and ord(ch) not in supported}
                 require(not missing, f'Missing glyphs in {family}: {missing}')
                 measured = ImageFont.truetype(str(font_file), size)
@@ -144,25 +186,39 @@ def make_plan(data, font_file, family):
                 for j, line in enumerate(lines):
                     if line:
                         boxes.append(dict(name=f'{c["id"]}-{name}-{j}', text=line, x=x, y=y+j*step,
-                                          w=w, h=step, size=size, color=color or theme['ink'], bold=bold))
+                                          w=w, h=step, size=size, color=color or theme['ink'], bold=bold,
+                                          runs=color_runs(line, c.get('equation_terms', []) if semantic else [], theme['roles'], color or theme['ink'])))
             expanded = variant == 'expanded'
             w = 608 if expanded else 1128
             add('title', c['term_en'], 60, 35, 1156, 60, 38, bold=True)
             add('chinese-title', c['term_zh'], 60, 96, 1156, 49, 30, theme['accent'])
             add('summary-en', c['summary_en'], 60, 165, w, 106, 24)
             add('summary-zh', c['summary_zh'], 60, 273, w, 69, 24)
-            add('formula', c['formula'], 60, 352, w, 80, 28, theme['accent'])
-            add('variables', c['variables'], 60, 438, w, 70, 24)
+            add('formula', c['formula'], 76, 352, w-32, 80, 28, semantic=True)
+            add('variables', c['variables'], 60, 438, w, 70, 24, semantic=True)
             add('conditions', c['conditions'], 60, 520, w, 70, 24)
             add('trap', c['trap'], 60, 598, w, 70, 24)
             refs = ', '.join(dict.fromkeys(r['source'] for r in c['references']))
             label = f'{c["id"]}   {refs}' + ('   Public-source demo / 非官方示例' if data['mode'] == 'public-demo' else '')
             add('reference', label, 60, 681, 1156, 25, 16, theme['muted'])
-            if expanded:
+            sheet = c['example'].get('balance_sheet') if expanded else None
+            if expanded and sheet:
+                for row in sheet['rows']:
+                    for value, width in ((row['label'], 366), (str(row['amount']), 94)):
+                        require(all(ch.isspace() or ord(ch) in supported for ch in value), 'Missing balance-sheet glyph')
+                        require(ImageFont.truetype(str(font_file),24).getlength(value) <= width,
+                                'Balance-sheet cell exceeds its column; shorten the label or split the statement')
+                add('expanded', c['expanded'], 728, 165, 492, 70, 24)
+                sheet_label = 'Original balance sheet / 示例资产负债表' if c['example']['origin'] == 'original' else 'Source balance sheet / 来源资产负债表'
+                add('example-label', sheet_label, 728, 245, 492, 35, 24, theme['accent'], True)
+                add('example', c['example']['prompt'], 728, 285, 492, 70, 24)
+                add('solution', c['example']['solution'], 728, 602, 492, 38, 26, semantic=True)
+                add('interpretation', c['example']['interpretation'], 728, 642, 492, 35, 24)
+            elif expanded:
                 add('expanded', c['expanded'], 728, 165, 492, 140, 24)
                 add('example-label', 'Original example' if c['example']['origin'] == 'original' else 'Source example', 728, 317, 492, 35, 24, theme['accent'], True)
-                add('example', c['example']['prompt'], 728, 365, 492, 105, 24)
-                add('solution', c['example']['solution'], 728, 485, 492, 100, 26, theme['accent'])
+                add('example', c['example']['prompt'], 728, 365, 492, 105, 24, semantic=True)
+                add('solution', c['example']['solution'], 728, 485, 492, 100, 26, semantic=True)
                 add('interpretation', c['example']['interpretation'], 728, 598, 492, 70, 24)
             source_map = {s['id']: s for s in data['sources']}
             refs_text = '\n'.join(f'[{r["source"]}] {source_map[r["source"]]["title"]}; {r["locator"]}: '
@@ -171,7 +227,8 @@ def make_plan(data, font_file, family):
                                   for r in c['references'])
             notes = c['notes'] + ('\n' + c['expanded_notes'] if expanded else '')
             provenance = f'{c["id"]}\n{data["title"]}\nScope: {data["scope"]}\nModule: {c["module"]}\nLOS: {c["los"]}\n'
-            result[variant].append({'id': c['id'], 'boxes': boxes, 'notes': provenance + notes + '\n' + refs_text})
+            result[variant].append({'id': c['id'], 'boxes': boxes, 'balance_sheet': sheet, 'expanded': expanded,
+                                    'formula_width': w, 'notes': provenance + notes + '\n' + refs_text})
     return result
 
 
@@ -222,6 +279,12 @@ def audit_pptx(path, concepts, variant, family=None):
             if variant == 'expanded':
                 for k in ('prompt', 'solution', 'interpretation'):
                     require(normalize(c['example'][k]) in text, f'Slide {i}: lost example {k}')
+                if c['example'].get('balance_sheet'):
+                    tables = root.findall('.//a:tbl', NS)
+                    require(len(tables) == 1, f'Slide {i}: expected an editable balance-sheet table')
+                    table_text = normalize(''.join(tables[0].itertext()))
+                    for row in c['example']['balance_sheet']['rows']:
+                        require(normalize(row['label']) in table_text and str(row['amount']) in table_text, f'Slide {i}: balance-sheet row missing')
             notes_parts = [target for kind, target in relationships(name).values() if kind.endswith('/notesSlide')]
             require(len(notes_parts) == 1, f'Slide {i}: missing or ambiguous notes relationship')
             notes = normalize(''.join(ET.fromstring(z.read(notes_parts[0])).itertext()))

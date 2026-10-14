@@ -9,7 +9,7 @@ Each invocation produces exactly:
 - `review-concise-handout.pdf`
 - `review-expanded-handout.pdf`
 
-The expanded deck preserves every concise slide's core content and order. The handouts use three vector slide thumbnails per page with corresponding explanatory notes. A final partial page contains only the remaining slides.
+The expanded deck preserves every concise slide's core content and order. Equations use consistent semantic colors matched to definitions and worked calculations, with neutral operators and clear section rules. Expanded slides can include an editable balance-sheet illustration whose subtotals and accounting identity are checked automatically. The handouts use three vector slide thumbnails per page with corresponding explanatory notes. A final partial page contains only the remaining slides.
 
 ## Install with npx
 

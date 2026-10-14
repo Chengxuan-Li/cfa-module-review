@@ -5,5 +5,21 @@
   "ink": "#192D38",
   "accent": "#225B64",
   "muted": "#53626B",
-  "background": "#FFFFFF"
+  "background": "#FFFFFF",
+  "equation_background": "#F2F6F8",
+  "rule": "#D6E0E5",
+  "roles": {
+    "assets": "#086D83",
+    "liabilities": "#9B5100",
+    "equity": "#73449B",
+    "revenue": "#175CB0",
+    "income": "#176D48",
+    "cost": "#9B5100",
+    "result": "#192D38",
+    "operating": "#176D48",
+    "investing": "#175CB0",
+    "financing": "#9B5100",
+    "efficiency": "#A2375D",
+    "leverage": "#9B5100"
+  }
 }

@@ -23,6 +23,10 @@ Keep the bilingual definition, shared formula, units, conditions and trap in com
 
 Maintain a consistent English–Chinese terminology list in the private work area. Resolve substantive contradictions explicitly using source authority and accounting framework/date. Record the reason and evidence in `issues`; unresolved issues block generation. Omit disputed claims rather than silently selecting a convenient version.
 
+Make equations visually interpretable: supply `equation_terms` with semantic color roles and matching aliases in definitions and worked calculations. Keep each quantity's color consistent across slides, leave operators neutral, and retain explicit labels so color is never the only distinction. Use the equation band and thin rules to separate definitions, assumptions and traps. Avoid a uniformly colored formula when it contains distinct quantities.
+
+For financial-statement interpretation, include a compact editable statement example when helpful. The expanded deck supports `example.balance_sheet`: identify entity, reporting date and currency unit, list components and totals, and verify both subtotals and Assets = Liabilities + Equity. Match asset, liability and equity colors to their equation symbols. Keep the concise counterpart's core content unchanged.
+
 ## Generate and verify
 
 Read [generation.md](references/generation.md) for dependencies, commands, layout limits and renderer selection. The code uses the Codex-supplied `@oai/artifact-tool` for editable PowerPoint text. It requires an installed CJK TrueType font and either Windows PowerPoint or LibreOffice. Do not copy runtime libraries or reference-repository files into this skill.

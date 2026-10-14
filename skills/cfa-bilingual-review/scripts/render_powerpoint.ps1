@@ -12,6 +12,17 @@ try {
     $errors = @()
     foreach ($slide in $presentation.Slides) {
         foreach ($shape in $slide.Shapes) {
+            if ($shape.HasTable) {
+                for ($row = 1; $row -le $shape.Table.Rows.Count; $row++) {
+                    for ($column = 1; $column -le $shape.Table.Columns.Count; $column++) {
+                        $cell = $shape.Table.Cell($row, $column).Shape
+                        $cellText = $cell.TextFrame.TextRange
+                        if ($cellText.BoundHeight -gt ($cell.Height + 2) -or $cellText.BoundWidth -gt ($cell.Width + 2)) {
+                            $errors += "Slide $($slide.SlideIndex): table cell $row,$column overflows"
+                        }
+                    }
+                }
+            }
             if ($shape.HasTextFrame -and $shape.TextFrame.HasText) {
                 $range = $shape.TextFrame.TextRange
                 if ($range.BoundHeight -gt ($shape.Height + 2) -or $range.BoundWidth -gt ($shape.Width + 2)) {

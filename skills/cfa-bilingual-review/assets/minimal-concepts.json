@@ -16,6 +16,11 @@
     "summary_en": "A ratio compares a numerator with a denominator.",
     "summary_zh": "比率用于比较分子与分母。",
     "formula": "R = A / B",
+    "equation_terms": [
+      {"text":"R","role":"result"},
+      {"text":"A","role":"assets"},
+      {"text":"B","role":"liabilities"}
+    ],
     "variables": "A and B use the same unit. R has no unit.",
     "conditions": "Condition: B > 0.",
     "trap": "Trap / 易错点：不可颠倒分子与分母。",
