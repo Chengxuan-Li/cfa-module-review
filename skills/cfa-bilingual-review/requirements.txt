@@ -1,0 +1,6 @@
+Pillow>=11,<13
+fonttools>=4.55,<5
+reportlab>=4.2,<5
+pypdf>=5,<7
+PyMuPDF>=1.25,<2
+striprtf>=0.0.29,<1

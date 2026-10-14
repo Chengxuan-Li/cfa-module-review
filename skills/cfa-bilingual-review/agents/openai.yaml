@@ -1,0 +1,4 @@
+interface:
+  display_name: "CFA Bilingual Review"
+  short_description: "Paired bilingual CFA decks and three-up handouts"
+  default_prompt: "Use $cfa-bilingual-review to make concise and expanded bilingual review decks and Letter handouts for the selected CFA modules."

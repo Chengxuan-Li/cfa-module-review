@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "mode": "public-demo",
+  "title": "Synthetic format fixture",
+  "scope": "One invented arithmetic example for testing; no CFA coverage claimed.",
+  "curriculum_year": "Not applicable: synthetic fixture",
+  "level": "Synthetic",
+  "sources": [{"id":"SYN","role":"synthetic","title":"Original test data","location":"Original arithmetic fixture in this skill"}],
+  "issues": [],
+  "concepts": [{
+    "id": "TEST-01",
+    "module": "Synthetic arithmetic",
+    "los": "Not an official LOS",
+    "term_en": "A simple ratio",
+    "term_zh": "简单比率",
+    "summary_en": "A ratio compares a numerator with a denominator.",
+    "summary_zh": "比率用于比较分子与分母。",
+    "formula": "R = A / B",
+    "variables": "A and B use the same unit. R has no unit.",
+    "conditions": "Condition: B > 0.",
+    "trap": "Trap / 易错点：不可颠倒分子与分母。",
+    "expanded": "Dividing equal units produces a dimensionless result.",
+    "notes": "先检查分母是否为零，再确认分子与分母的单位一致。",
+    "expanded_notes": "Here the numerator is twice the denominator.",
+    "references": [{"source":"SYN","locator":"Original fixture"}],
+    "example": {
+      "origin": "original",
+      "kind": "numeric",
+      "prompt": "A is 12 and B is 6. Calculate R.",
+      "solution": "R = 12 / 6 = 2",
+      "interpretation": "A is twice B.",
+      "checks": [{"expression":"A / B","inputs":{"A":12,"B":6},"expected":2,"display":"= 2"}]
+    }
+  }]
+}

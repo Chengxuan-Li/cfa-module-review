@@ -1,0 +1,7 @@
+{
+  "name": "cfa-bilingual-review",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "description": "Uses the Codex-provided @oai/artifact-tool module; no npm download of that private package is required."
+}

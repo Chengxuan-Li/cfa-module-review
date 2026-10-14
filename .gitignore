@@ -1,0 +1,36 @@
+# Private source material and all demonstration work
+demo/
+inputs/
+sources/
+output/
+outputs/
+build/
+tmp/
+.work/
+.codex-finalizer/
+*.pdf
+*.pptx
+*.ppt
+*.docx
+*.doc
+*.rtf
+*.png
+*.webp
+*.jpg
+*.log
+# Dependencies, local installation and machine state
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.DS_Store
+Thumbs.db
+.env
+.env.*
+.agents/
+.codex/
+skills-lock.json
+*.local.*
