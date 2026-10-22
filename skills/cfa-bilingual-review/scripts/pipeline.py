@@ -80,17 +80,54 @@ def validate(data):
     require(not any(x.get('status') != 'resolved' for x in data.get('issues', [])), 'Resolve or omit disputed claims before building; unresolved issues remain')
     concepts = data.get('concepts', [])
     require(concepts and len({c['id'] for c in concepts}) == len(concepts), 'Concept IDs must be unique and nonempty')
+    objective_layout = data.get('layout') == 'objectives'
+    bilingual = data.get('language_profile') == 'bilingual-knowledge-english-examples'
+    require(not bilingual or objective_layout, 'Bilingual knowledge requires the objectives layout')
+    objectives = data.get('learning_objectives', [])
+    if objective_layout:
+        require(objectives and len({o['id'] for o in objectives}) == len(objectives), 'Learning objective IDs must be unique')
+        for objective in objectives:
+            require(all(objective.get(k) for k in ('id', 'text_en', 'text_zh', 'short_zh', 'source', 'locator')), 'Incomplete learning objective')
+            require(objective['source'] in ids, 'Unknown learning objective source')
+        objective_order = [o['id'] for o in objectives]
+        positions = [objective_order.index(c['objective_id']) if c.get('objective_id') in objective_order else -1 for c in concepts]
+        require(-1 not in positions and positions == sorted(positions) and set(positions) == set(range(len(objectives))), 'Group slides by every selected learning objective in syllabus order')
     for c in concepts:
-        for key in ('id', 'module', 'los', 'term_en', 'term_zh', 'summary_en', 'summary_zh',
-                    'formula', 'variables', 'conditions', 'trap', 'expanded', 'notes', 'expanded_notes'):
+        keys = ('id', 'module', 'los', 'term_en', 'term_zh', 'trap', 'notes', 'expanded_notes')
+        if not objective_layout:
+            keys += ('summary_en', 'summary_zh', 'formula', 'variables', 'conditions', 'expanded')
+        for key in keys:
             require(isinstance(c.get(key), str) and c[key].strip(), f'{c.get("id")}: missing {key}')
-        require(re.search(r'[\u4e00-\u9fff]', c['term_zh'] + c['summary_zh']), f'{c["id"]}: Chinese text missing')
+        require(re.search(r'[\u4e00-\u9fff]', c['term_zh']), f'{c["id"]}: Chinese text missing')
+        if objective_layout:
+            require(c.get('review_blocks'), f'{c["id"]}: missing review blocks')
+            for block in c['review_blocks']:
+                require(block.get('label') and (block.get('text') or block.get('formula')), 'A review block needs a label and content')
+                if bilingual:
+                    require(block.get('label_en'), 'Bilingual blocks need English labels')
+                    if block.get('text'):
+                        require(block.get('text_en') and re.search(r'[A-Za-z]', block['text_en']), 'Every Chinese knowledge statement needs its English counterpart')
+                        require(re.search(r'[\u4e00-\u9fff]', block['text']) and not re.search(r'[\u4e00-\u9fff]', block['text_en']), 'Keep knowledge languages in their respective columns')
+                if block.get('formula'):
+                    require(block.get('condition') and re.search(r'[\u4e00-\u9fff]', block['condition']), 'Formula guidance must be Chinese')
+            guidance = [c['trap'], *[b['condition'] for b in c['review_blocks'] if b.get('condition')]]
+            if not bilingual:
+                guidance.append(c.get('example', {}).get('prompt', ''))
+            for value in guidance:
+                require(re.search(r'[\u4e00-\u9fff]', value), 'Guidance and traps must contain Chinese')
+                require(not re.search(r'\b(?:Condition|Original example|Source example|Assume|Compare|Ignore)\b', value, re.I), 'Use Chinese guidance without English scaffolding')
+            if bilingual:
+                require(c.get('recall_en') and c.get('recall_zh'), 'Bilingual recall needs both languages')
+                for field in ('prompt', 'solution', 'interpretation'):
+                    value = c.get('example', {}).get(field, '')
+                    require(value and re.search(r'[A-Za-z]', value) and not re.search(r'[\u4e00-\u9fff]', value), 'Examples must be entirely English')
         require(c.get('references'), f'{c["id"]}: no source references')
         for r in c['references']:
             require(r['source'] in ids and r.get('locator'), f'{c["id"]}: unknown source or missing locator')
         e = c.get('example', {})
+        formula_text = '\n'.join(b.get('formula', '') for b in c['review_blocks']) if objective_layout else c['formula']
         for term in c.get('equation_terms', []):
-            require(term.get('role') in roles and term.get('text') in c['formula'], f'{c["id"]}: invalid equation term or color role')
+            require(term.get('role') in roles and term.get('text') in formula_text, f'{c["id"]}: invalid equation term or color role')
         if e.get('balance_sheet'):
             sheet = e['balance_sheet']
             require(sheet.get('date') and sheet.get('entity') and sheet.get('unit'), 'Balance sheet needs entity, date and currency unit')
@@ -100,6 +137,8 @@ def validate(data):
             require(len(row_ids) == len(rows), 'Balance-sheet row IDs must be unique')
             for row in rows:
                 require(row.get('label') and row.get('role') in roles and type(row.get('amount')) in (int, float) and math.isfinite(row['amount']), 'Invalid balance-sheet row')
+                if bilingual:
+                    require(re.search(r'[A-Za-z]', row['label']) and not re.search(r'[\u4e00-\u9fff]', row['label']), 'Example balance-sheet labels must be English')
             values = {r['id']: r['amount'] for r in rows}
             for row in rows:
                 if row.get('components'):
@@ -153,7 +192,13 @@ def wrap(text, font, width):
     lines = []
     for paragraph in text.split('\n'):
         line = ''
+        tokens = []
         for token in re.findall(r'[\u2e80-\u9fff\uff00-\uffef]|[^\u2e80-\u9fff\uff00-\uffef\s]+|[ \t]+', paragraph):
+            if token in '。，、；：！？）》】」』' and tokens and tokens[-1].strip():
+                tokens[-1] += token
+            else:
+                tokens.append(token)
+        for token in tokens:
             require(font.getlength(token.strip()) <= width, f'Unbreakable text exceeds layout: {token}')
             if line and font.getlength(line + token) > width:
                 lines.append(line.rstrip())
@@ -181,45 +226,32 @@ def make_plan(data, font_file, family):
                 require(not missing, f'Missing glyphs in {family}: {missing}')
                 measured = ImageFont.truetype(str(font_file), size)
                 lines = wrap(text, measured, w - 8)
-                step = math.ceil(size * 1.43)
+                step = math.ceil(size * (1.3 if data.get('language_profile') == 'bilingual-knowledge-english-examples' else 1.43))
                 require(len(lines) * step <= h, f'{c["id"]}/{variant}/{name} overflows ({len(lines)} lines); split the concept in BOTH variants or shorten wording')
                 for j, line in enumerate(lines):
                     if line:
                         boxes.append(dict(name=f'{c["id"]}-{name}-{j}', text=line, x=x, y=y+j*step,
                                           w=w, h=step, size=size, color=color or theme['ink'], bold=bold,
                                           runs=color_runs(line, c.get('equation_terms', []) if semantic else [], theme['roles'], color or theme['ink'])))
+                return len(lines) * step
             expanded = variant == 'expanded'
-            w = 608 if expanded else 1128
-            add('title', c['term_en'], 60, 35, 1156, 60, 38, bold=True)
-            add('chinese-title', c['term_zh'], 60, 96, 1156, 49, 30, theme['accent'])
-            add('summary-en', c['summary_en'], 60, 165, w, 106, 24)
-            add('summary-zh', c['summary_zh'], 60, 273, w, 69, 24)
-            add('formula', c['formula'], 76, 352, w-32, 80, 28, semantic=True)
-            add('variables', c['variables'], 60, 438, w, 70, 24, semantic=True)
-            add('conditions', c['conditions'], 60, 520, w, 70, 24)
-            add('trap', c['trap'], 60, 598, w, 70, 24)
-            refs = ', '.join(dict.fromkeys(r['source'] for r in c['references']))
-            label = f'{c["id"]}   {refs}' + ('   Public-source demo / 非官方示例' if data['mode'] == 'public-demo' else '')
-            add('reference', label, 60, 681, 1156, 25, 16, theme['muted'])
-            sheet = c['example'].get('balance_sheet') if expanded else None
-            if expanded and sheet:
+            cards = []
+            if data.get('layout') == 'objectives':
+                objective = next(o for o in data['learning_objectives'] if o['id'] == c['objective_id'])
+                if data.get('language_profile') == 'bilingual-knowledge-english-examples':
+                    cards = plan_bilingual_slide(c, objective, expanded, add, theme, index, len(data['concepts']), data['mode'])
+                else:
+                    plan_objective_slide(c, objective, expanded, add, theme, index, len(data['concepts']), data['mode'])
+                sheet = c['example'].get('balance_sheet') if expanded else None
+            else:
+                plan_legacy_slide(c, data, expanded, add, font_file, supported, theme)
+                sheet = c['example'].get('balance_sheet') if expanded else None
+            if sheet:
+                widths = (390, 114) if data.get('layout') == 'objectives' else (366, 94)
                 for row in sheet['rows']:
-                    for value, width in ((row['label'], 366), (str(row['amount']), 94)):
+                    for value, width in zip((row['label'], str(row['amount'])), widths):
                         require(all(ch.isspace() or ord(ch) in supported for ch in value), 'Missing balance-sheet glyph')
-                        require(ImageFont.truetype(str(font_file),24).getlength(value) <= width,
-                                'Balance-sheet cell exceeds its column; shorten the label or split the statement')
-                add('expanded', c['expanded'], 728, 165, 492, 70, 24)
-                sheet_label = 'Original balance sheet / 示例资产负债表' if c['example']['origin'] == 'original' else 'Source balance sheet / 来源资产负债表'
-                add('example-label', sheet_label, 728, 245, 492, 35, 24, theme['accent'], True)
-                add('example', c['example']['prompt'], 728, 285, 492, 70, 24)
-                add('solution', c['example']['solution'], 728, 602, 492, 38, 26, semantic=True)
-                add('interpretation', c['example']['interpretation'], 728, 642, 492, 35, 24)
-            elif expanded:
-                add('expanded', c['expanded'], 728, 165, 492, 140, 24)
-                add('example-label', 'Original example' if c['example']['origin'] == 'original' else 'Source example', 728, 317, 492, 35, 24, theme['accent'], True)
-                add('example', c['example']['prompt'], 728, 365, 492, 105, 24, semantic=True)
-                add('solution', c['example']['solution'], 728, 485, 492, 100, 26, semantic=True)
-                add('interpretation', c['example']['interpretation'], 728, 598, 492, 70, 24)
+                        require(ImageFont.truetype(str(font_file), 24).getlength(value) <= width, 'Balance-sheet cell exceeds its column')
             source_map = {s['id']: s for s in data['sources']}
             refs_text = '\n'.join(f'[{r["source"]}] {source_map[r["source"]]["title"]}; {r["locator"]}: '
                                   + source_map[r['source']]['location']
@@ -227,9 +259,136 @@ def make_plan(data, font_file, family):
                                   for r in c['references'])
             notes = c['notes'] + ('\n' + c['expanded_notes'] if expanded else '')
             provenance = f'{c["id"]}\n{data["title"]}\nScope: {data["scope"]}\nModule: {c["module"]}\nLOS: {c["los"]}\n'
+            if data.get('layout') == 'objectives':
+                provenance += f'Learning outcome: {objective["text_en"]}\n学习目标：{objective["text_zh"]}\n{objective["source"]}: {objective["locator"]}\n'
             result[variant].append({'id': c['id'], 'boxes': boxes, 'balance_sheet': sheet, 'expanded': expanded,
-                                    'formula_width': w, 'notes': provenance + notes + '\n' + refs_text})
+                                    'cards': cards, 'language_profile': data.get('language_profile'),
+                                    'layout': data.get('layout', 'legacy'), 'formula_width': 608 if expanded else 1128,
+                                    'notes': provenance + notes + '\n' + refs_text})
     return result
+
+
+def plan_bilingual_slide(c, objective, expanded, add, theme, index, count, mode):
+    """Aligned English/Chinese knowledge rows with explicit card boundaries."""
+    add('objective', f'{objective["id"]}  {objective["short_zh"]}', 60, 18, 1156, 29, 20, theme['accent'], True)
+    add('title', c['term_en'], 60, 52, 1156, 51, 34, bold=True)
+    title = c['term_zh'] + ('（公开资料示例）' if mode == 'public-demo' else '')
+    add('chinese-title', title, 60, 107, 1156, 36, 24, theme['accent'])
+    cards, y = [], 164
+    for n, block in enumerate(c['review_blocks']):
+        start = y
+        label = block['label'] if block['label_en'] in block['label'] else block['label'] + '\n' + block['label_en']
+        label_height = add(f'block-{n}-label', label, 60, y, 180, 128, 24, theme['accent'], True)
+        if block.get('condition'):
+            y += add(f'block-{n}-condition', block['condition'], 258, y, 950, 128, 24)
+        if block.get('formula'):
+            y += add(f'block-{n}-formula', block['formula'], 258, y, 950, 140, 26, semantic=True)
+        divider_y = y
+        if block.get('text'):
+            en_height = add(f'block-{n}-en', block['text_en'], 258, y, 452, 160, 24, semantic=True)
+            zh_height = add(f'block-{n}-text', block['text'], 752, y, 456, 160, 24, semantic=True)
+            y += max(en_height, zh_height)
+        bottom = max(y, start + label_height)
+        cards.append(dict(name=f'knowledge-{n}', x=48, y=start-5, w=1180, h=bottom-start+10,
+                          label_divider=247, language_divider=731 if block.get('text') else None,
+                          language_y=divider_y, language_h=bottom-divider_y))
+        y = bottom + 12
+    sheet = c['example'].get('balance_sheet') if expanded else None
+    require(y <= (355 if sheet else 500), f'{c["id"]}: bilingual knowledge group overflows; shorten paired wording or split both variants')
+    if expanded:
+        label = 'Worked example (source)' if c['example']['origin'] == 'source' else 'Worked example (original)'
+        if sheet:
+            cards.append(dict(name='example',x=48,y=359,w=1180,h=296))
+            add('example-label', label + ' - Balance sheet', 60, 365, 1150, 32, 24, theme['accent'], True)
+            add('example', c['example']['prompt'], 60, 407, 568, 96, 24, semantic=True)
+            add('solution', c['example']['solution'], 60, 511, 568, 105, 26, semantic=True)
+            add('interpretation', c['example']['interpretation'], 60, 620, 568, 32, 24)
+        else:
+            cards.append(dict(name='example',x=48,y=504,w=1180,h=151,label_divider=628))
+            add('example-label', label, 60, 510, 1150, 32, 24, theme['accent'], True)
+            three_lines = len(c['example']['solution'].splitlines()) == 3
+            add('example', c['example']['prompt'], 60, 549, 546, 64 if three_lines else 96, 24, semantic=True)
+            add('solution', c['example']['solution'], 646, 549, 562, 102 if three_lines else 68, 26, semantic=True)
+            add('interpretation', c['example']['interpretation'], 60 if three_lines else 646, 621, 546 if three_lines else 562, 32, 24)
+    else:
+        cards.append(dict(name='recall',x=48,y=504,w=1180,h=151,label_divider=731))
+        add('recall-label', 'Review / 复习要点', 60, 510, 1150, 32, 24, theme['accent'], True)
+        add('recall-en', c['recall_en'], 60, 549, 650, 96, 24)
+        add('recall-zh', c['recall_zh'], 752, 549, 456, 96, 24)
+    cards.append(dict(name='trap',x=48,y=661,w=1180,h=37))
+    add('trap', c['trap'], 60, 665, 1150, 32, 24)
+    refs = ', '.join(dict.fromkeys(r['source'] for r in c['references']))
+    add('reference', f'{c["id"]}   {refs}     {index:02}/{count:02}',60,704,1156,16,11,theme['muted'])
+    return cards
+
+
+def plan_objective_slide(c, objective, expanded, add, theme, index, count, mode):
+    """Full-width knowledge groups, with Chinese guidance preceding each formula."""
+    add('objective', f'{objective["id"]}  {objective["short_zh"]}', 60, 18, 1156, 29, 20, theme['accent'], True)
+    add('title', c['term_en'], 60, 52, 1156, 51, 34, bold=True)
+    chinese_title = c['term_zh'] + ('（公开资料示例）' if mode == 'public-demo' else '')
+    add('chinese-title', chinese_title, 60, 107, 1156, 36, 24, theme['accent'])
+    y = 160
+    for n, block in enumerate(c['review_blocks']):
+        start = y
+        label_height = add(f'block-{n}-label', block['label'], 60, y, 196, 140, 24, theme['accent'], True)
+        if block.get('condition'):
+            y += add(f'block-{n}-condition', block['condition'], 270, y, 946, 140, 24)
+        if block.get('formula'):
+            y += add(f'block-{n}-formula', block['formula'], 270, y, 946, 140, 26, semantic=True)
+        if block.get('text'):
+            y += add(f'block-{n}-text', block['text'], 270, y, 946, 210, 24, semantic=True)
+        y = max(y, start + label_height) + 8
+    sheet = c['example'].get('balance_sheet') if expanded else None
+    require(y <= (326 if sheet else 476), f'{c["id"]}: objective knowledge group overflows; split the group without shrinking')
+    if expanded:
+        label = '例题（教材）' if c['example']['origin'] == 'source' else '例题（原创）'
+        if sheet:
+            add('example-label', label + '：资产负债表', 60, 333, 1156, 35, 24, theme['accent'], True)
+            add('example', c['example']['prompt'], 60, 377, 568, 105, 24, semantic=True)
+            add('solution', c['example']['solution'], 60, 492, 568, 114, 26, semantic=True)
+            add('interpretation', c['example']['interpretation'], 60, 610, 568, 35, 24)
+        else:
+            add('example-label', label, 60, 487, 1156, 35, 24, theme['accent'], True)
+            three_lines = len(c['example']['solution'].splitlines()) == 3
+            add('example', c['example']['prompt'], 60, 530, 546, 70 if three_lines else 105, 24, semantic=True)
+            add('solution', c['example']['solution'], 646, 530, 570, 114 if three_lines else 76, 26, semantic=True)
+            add('interpretation', c['example']['interpretation'], 60 if three_lines else 646, 612, 546 if three_lines else 570, 35, 24)
+    else:
+        add('recall-label', '复习要点', 60, 487, 196, 35, 24, theme['accent'], True)
+        add('recall', c['notes'], 270, 487, 946, 150, 24)
+    add('trap', c['trap'], 60, 665, 1156, 35, 24)
+    refs = ', '.join(dict.fromkeys(r['source'] for r in c['references']))
+    add('reference', f'{c["id"]}   {refs}     {index:02}/{count:02}', 60, 704, 1156, 16, 11, theme['muted'])
+
+
+def plan_legacy_slide(c, data, expanded, add, font_file, supported, theme):
+    w = 608 if expanded else 1128
+    add('title', c['term_en'], 60, 35, 1156, 60, 38, bold=True)
+    add('chinese-title', c['term_zh'], 60, 96, 1156, 49, 30, theme['accent'])
+    add('summary-en', c['summary_en'], 60, 165, w, 106, 24)
+    add('summary-zh', c['summary_zh'], 60, 273, w, 69, 24)
+    add('formula', c['formula'], 76, 352, w-32, 80, 28, semantic=True)
+    add('variables', c['variables'], 60, 438, w, 70, 24, semantic=True)
+    add('conditions', c['conditions'], 60, 520, w, 70, 24)
+    add('trap', c['trap'], 60, 598, w, 70, 24)
+    refs = ', '.join(dict.fromkeys(r['source'] for r in c['references']))
+    label = f'{c["id"]}   {refs}' + ('   Public-source demo / 非官方示例' if data['mode'] == 'public-demo' else '')
+    add('reference', label, 60, 681, 1156, 25, 16, theme['muted'])
+    sheet = c['example'].get('balance_sheet') if expanded else None
+    if expanded and sheet:
+        add('expanded', c['expanded'], 728, 165, 492, 70, 24)
+        sheet_label = 'Original balance sheet / 示例资产负债表' if c['example']['origin'] == 'original' else 'Source balance sheet / 来源资产负债表'
+        add('example-label', sheet_label, 728, 245, 492, 35, 24, theme['accent'], True)
+        add('example', c['example']['prompt'], 728, 285, 492, 70, 24)
+        add('solution', c['example']['solution'], 728, 602, 492, 38, 26, semantic=True)
+        add('interpretation', c['example']['interpretation'], 728, 642, 492, 35, 24)
+    elif expanded:
+        add('expanded', c['expanded'], 728, 165, 492, 140, 24)
+        add('example-label', 'Original example' if c['example']['origin'] == 'original' else 'Source example', 728, 317, 492, 35, 24, theme['accent'], True)
+        add('example', c['example']['prompt'], 728, 365, 492, 105, 24, semantic=True)
+        add('solution', c['example']['solution'], 728, 485, 492, 100, 26, semantic=True)
+        add('interpretation', c['example']['interpretation'], 728, 598, 492, 70, 24)
 
 
 def audit_pptx(path, concepts, variant, family=None):
@@ -270,11 +429,18 @@ def audit_pptx(path, concepts, variant, family=None):
                 for node in root.findall('.//a:latin', NS) + root.findall('.//a:ea', NS):
                     require(node.get('typeface') in (family, '+mj-lt', '+mn-lt', '+mj-ea', '+mn-ea', ''), f'Slide {i}: unexpected font {node.get("typeface")}')
             text = normalize(''.join(root.itertext()))
-            keys = ['term_en', 'term_zh', 'summary_en', 'summary_zh', 'formula', 'variables', 'conditions', 'trap']
-            if variant == 'expanded':
+            keys = ['term_en', 'term_zh', 'trap'] if c.get('review_blocks') else ['term_en', 'term_zh', 'summary_en', 'summary_zh', 'formula', 'variables', 'conditions', 'trap']
+            if variant == 'expanded' and not c.get('review_blocks'):
                 keys.append('expanded')
             for k in keys:
                 require(normalize(c[k]) in text, f'Slide {i}: lost {k}')
+            for block in c.get('review_blocks', []):
+                for key in ('label', 'label_en', 'condition', 'formula', 'text', 'text_en'):
+                    if block.get(key):
+                        require(normalize(block[key]) in text, f'Slide {i}: lost review block {key}')
+            if c.get('recall_en') and variant == 'concise':
+                for key in ('recall_en', 'recall_zh'):
+                    require(normalize(c[key]) in text, f'Slide {i}: lost bilingual recall')
             require(c['id'] in text, f'Slide {i}: wrong concept order')
             if variant == 'expanded':
                 for k in ('prompt', 'solution', 'interpretation'):
@@ -335,7 +501,13 @@ def handout(slides_path, data, variant, dest, font_file):
             cv.setFont('ReviewNotes', 10)
             cv.drawString(438, top-12, c['id'])
             notes = c['notes'] + (' ' + c['expanded_notes'] if variant == 'expanded' else '')
-            paragraph = Paragraph(escape(notes), style)
+            class NotesMetrics:
+                def getlength(self, value):
+                    return pdfmetrics.stringWidth(value, 'ReviewNotes', 9.5)
+            # Pre-wrap with the same CJK punctuation rules as the slides. ReportLab's
+            # CJK auto-wrap can otherwise strand closing punctuation at line starts.
+            note_lines = wrap(notes, NotesMetrics(), 142)
+            paragraph = Paragraph('<br/>'.join(escape(line) for line in note_lines), style)
             _, height = paragraph.wrap(144, 204)
             require(height <= 204, f'{c["id"]}: handout notes overflow; edit notes without dropping essential explanation')
             paragraph.drawOn(cv, 438, top-27-height)
@@ -349,7 +521,13 @@ def handout(slides_path, data, variant, dest, font_file):
         require(len(slides) == count, 'Rendered slide count mismatch')
         for i in range(count):
             top = 42 + (i % 3)*238
-            notes_pdf[i//3].show_pdf_page(fitz.Rect(30, top, 426, top+222.75), slides, i)
+            frame = fitz.Rect(30, top, 426, top+222.75)
+            notes_pdf[i//3].show_pdf_page(frame, slides, i)
+            notes_pdf[i//3].draw_rect(frame, color=(0.18, 0.28, 0.33), width=1.5, overlay=True)
+    # Module bookmarks make book-length handouts navigable without changing pages.
+    module_starts = [(i, c['module']) for i, c in enumerate(data['concepts'])
+                     if i == 0 or c['module'] != data['concepts'][i-1]['module']]
+    notes_pdf.set_toc([[1, title, i//3+1] for i, title in module_starts])
     notes_pdf.save(dest, garbage=4, deflate=True)
     notes_pdf.close()
 

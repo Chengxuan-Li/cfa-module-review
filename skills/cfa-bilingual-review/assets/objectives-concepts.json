@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "mode": "public-demo",
+  "layout": "objectives",
+  "language_profile": "bilingual-knowledge-english-examples",
+  "title": "Synthetic bilingual objective fixture",
+  "scope": "One invented arithmetic example for testing the layout; no CFA coverage claimed.",
+  "curriculum_year": "Not applicable: synthetic fixture",
+  "level": "Synthetic",
+  "sources": [
+    {
+      "id": "SYN",
+      "role": "synthetic",
+      "title": "Original test data",
+      "location": "Original arithmetic fixture in this skill"
+    }
+  ],
+  "issues": [],
+  "learning_objectives": [
+    {
+      "id": "SYN.a",
+      "text_en": "Compare two quantities using a ratio.",
+      "text_zh": "使用比率比较两个数量。",
+      "short_zh": "比较两个数量",
+      "source": "SYN",
+      "locator": "Original synthetic objective; local code, not an official CFA LOS."
+    }
+  ],
+  "concepts": [
+    {
+      "id": "TEST-01",
+      "module": "Synthetic arithmetic",
+      "los": "Not an official LOS",
+      "objective_id": "SYN.a",
+      "term_en": "A simple ratio",
+      "term_zh": "简单比率",
+      "review_blocks": [
+        {
+          "label": "比率计算",
+          "label_en": "Ratio",
+          "condition": "公式条件：分子分母单位相同，分母为正。",
+          "formula": "R = A / B"
+        },
+        {
+          "label": "变量含义",
+          "label_en": "Terms",
+          "text_en": "A is the numerator. B is the denominator. R has no unit.",
+          "text": "A 为分子，B 为分母，R 无单位。"
+        }
+      ],
+      "equation_terms": [
+        {
+          "text": "R",
+          "role": "result"
+        },
+        {
+          "text": "A",
+          "role": "assets"
+        },
+        {
+          "text": "B",
+          "role": "liabilities"
+        }
+      ],
+      "recall_en": "Compare the same units and check the denominator.",
+      "recall_zh": "比较相同单位，并核对分母。",
+      "trap": "易错点：不可颠倒分子与分母。",
+      "notes": "先检查分母是否为零，再确认分子与分母的单位一致。",
+      "expanded_notes": "Here the numerator is twice the denominator.",
+      "references": [
+        {
+          "source": "SYN",
+          "locator": "Original fixture"
+        }
+      ],
+      "example": {
+        "origin": "original",
+        "kind": "numeric",
+        "prompt": "A is 12 and B is 6. Calculate R.",
+        "solution": "R = 12 / 6 = 2",
+        "interpretation": "A is twice B.",
+        "checks": [
+          {
+            "expression": "A / B",
+            "inputs": {
+              "A": 12,
+              "B": 6
+            },
+            "expected": 2,
+            "display": "= 2"
+          }
+        ]
+      }
+    }
+  ]
+}

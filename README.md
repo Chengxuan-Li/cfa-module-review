@@ -9,45 +9,46 @@ Each invocation produces exactly:
 - `review-concise-handout.pdf`
 - `review-expanded-handout.pdf`
 
-The expanded deck preserves every concise slide's core content and order. Equations use consistent semantic colors matched to definitions and worked calculations, with neutral operators and clear section rules. Expanded slides can include an editable balance-sheet illustration whose subtotals and accounting identity are checked automatically. The handouts use three vector slide thumbnails per page with corresponding explanatory notes. A final partial page contains only the remaining slides.
+The expanded deck preserves every concise slide's core content and order. Equations use consistent semantic colors matched to definitions and worked calculations, with neutral operators, clearly outlined knowledge cards and visible internal dividers. Expanded slides can include an editable balance-sheet illustration whose subtotals and accounting identity are checked automatically. The handouts use three vector slide thumbnails per page with clear outer frames and corresponding explanatory notes. A final partial page contains only the remaining slides.
+
+Reviews follow curriculum learning objectives in source order, with the current objective visible on each page. Related rules and formulas share a page when comparison helps. Knowledge statements are paired in English and Simplified Chinese. Worked examples, answers and balance-sheet labels use English; formula conditions and common mistakes use Simplified Chinese. Use `layout: "objectives"` with `language_profile: "bilingual-knowledge-english-examples"` for this format. Earlier input layouts remain supported.
 
 ## Install with npx
 
-Node.js 22+ is recommended. From this repository, discover or install the skill using the [official skills CLI](https://github.com/vercel-labs/skills):
+Requires Node.js 22.20+ for the [Vercel skills CLI](https://github.com/vercel-labs/skills). Install from the public GitHub repository into your current project:
 
 ```sh
-npx skills add . --list
-npx skills add . --skill cfa-bilingual-review
+npx skills add Chengxuan-Li/cfa-module-review --skill cfa-bilingual-review --agent codex
 ```
 
 Install specifically for Codex, globally:
 
 ```sh
-npx skills add . --skill cfa-bilingual-review --agent codex --global
+npx skills add Chengxuan-Li/cfa-module-review --skill cfa-bilingual-review --agent codex --global
 ```
 
-For a project installation, run from the target project and pass the repository's absolute path:
+List the available skill before installing, or install for another supported agent by changing `--agent`:
 
-```powershell
-npx skills add C:/github/cfa-module-review --skill cfa-bilingual-review --agent codex
+```sh
+npx skills add Chengxuan-Li/cfa-module-review --list
 ```
 
-No Git remote is configured initially. These examples use the actual local repository. After publishing, substitute its real Git URL for the local path; no GitHub owner is assumed. `npx skills` installs the skill files, not Python packages or presentation software.
+Add `--yes` for a noninteractive installation. For local development, clone this repository and use `npx skills add . --skill cfa-bilingual-review --agent codex` from its root. `npx skills` installs the skill files, not Python packages, the private Artifact Tool runtime, fonts or presentation software. This is a Git-hosted skill; no npm package publication is needed.
 
 ## Requirements
 
 - Python 3.11+ and the skill's `requirements.txt`.
-- Node.js 22+ and the Codex-provided `@oai/artifact-tool` runtime. Tested with 2.8.93. This private package is **not** available through a normal `npm install`; use Codex desktop's `load_workspace_dependencies` tool to locate it.
+- Node.js 22.20+ and the Codex-provided `@oai/artifact-tool` runtime. Tested with 2.8.99. This private package is **not** available through a normal `npm install`; use Codex desktop's `load_workspace_dependencies` tool to locate it.
 - Windows PowerPoint, or LibreOffice with `--renderer libreoffice`.
 - An installed CJK TrueType font. Defaults: Microsoft YaHei and `C:/Windows/Fonts/msyh.ttc`. Pass both font family and file when using a different font. PPTX fonts are not embedded.
 
 ```sh
 python -m venv .venv
 # Activate the environment using the command appropriate for your shell.
-python -m pip install -r skills/cfa-bilingual-review/requirements.txt
+python -m pip install -r SKILL_DIR/requirements.txt
 ```
 
-Codex CLI users can install and read the skill, but running the supplied generator also requires access to the compatible Artifact Tool runtime. The repository does not bundle that runtime or the reference skills.
+Replace `SKILL_DIR` with the installed skill directory printed by the installer. In a clone it is `skills/cfa-bilingual-review`; project installations normally use `.agents/skills/cfa-bilingual-review`. Codex CLI users can install and read the skill, but running the supplied generator also requires access to the compatible Artifact Tool runtime. The repository does not bundle that runtime or the reference skills.
 
 ## Invoke
 
@@ -64,16 +65,16 @@ Analysis demo without my source books. Use original examples, identify
 unverified coverage, and keep all demo work outside Git.
 ```
 
-Normal mode requires the curriculum PDF (scope and LOS authority), Chinese preparation PDF (terminology and explanations), and Kaplan DOCX/RTF/pasted text (secondary detail). One or several selected modules are supported. Input extraction is local; the agent must visually verify formulas, reconcile conflicts and author the intermediate concepts. Scanned PDFs need a separate OCR step. No official coverage is inferred from absent sources.
+Normal mode requires the curriculum PDF (scope and LOS authority), Chinese preparation PDF (terminology and explanations), and Kaplan PDF/DOCX/RTF/pasted text (secondary detail). Select one module, several modules, or an entire book. For a whole book, inventory every module and exact learning outcome first, maintain a coverage map, and keep the slides in curriculum order. Input extraction is local; the agent must visually verify formulas, reconcile conflicts and author the intermediate concepts. Scanned PDFs need a separate OCR step. No official coverage is inferred from absent sources.
 
-See [source handling](skills/cfa-bilingual-review/references/sources.md) and the [concept contract](skills/cfa-bilingual-review/references/concept-format.md). The [small synthetic fixture](skills/cfa-bilingual-review/assets/minimal-concepts.json) is a format example, not a demo book.
+See [source handling](skills/cfa-bilingual-review/references/sources.md) and the [concept contract](skills/cfa-bilingual-review/references/concept-format.md). Start new concept records from the [bilingual objective fixture](skills/cfa-bilingual-review/assets/objectives-concepts.json). The [legacy fixture](skills/cfa-bilingual-review/assets/minimal-concepts.json) remains for compatibility. Both contain invented arithmetic only, with no curriculum coverage claimed.
 
 ## Run the generator directly
 
 After preparing private concept JSON, set `ARTIFACT_TOOL_MODULE` to the runtime's `@oai/artifact-tool/dist/artifact_tool.mjs`, then run:
 
 ```sh
-python skills/cfa-bilingual-review/scripts/pipeline.py inputs/concepts.json --out output/run-01 --work build/run-01
+python SKILL_DIR/scripts/pipeline.py inputs/concepts.json --out output/run-01 --work build/run-01
 ```
 
 Use `--node`, `--artifact-module`, `--renderer`, `--soffice`, `--font-file`, and `--font-family` to customize dependencies. Both destination directories must be fresh and separate. Source hierarchy, formulas, notes and examples are controlled by JSON; colors by `assets/theme.json`; layout slots by `make_plan()` in the pipeline. Read [generation and troubleshooting](skills/cfa-bilingual-review/references/generation.md) before changing the grid.
@@ -105,7 +106,7 @@ npx skills add . --list
 
 The pipeline checks arithmetic, required roles, traceable references, glyph coverage, font-sized text capacity, PowerPoint package integrity, slide correspondence, concise-content preservation, notes, native rendering and handout geometry/order. It writes private `validation.json` and PNGs. Inspect every slide and every handout page before delivery. Automated success is not a visual or curriculum accuracy guarantee.
 
-The initial public-source demonstration covers ten foundational Financial Statement Analysis concepts with original examples. It is stored under ignored `demo/`; it is not distributed with the skill. Public sources include the [SEC guide](https://www.sec.gov/about/reports-publications/investorpubsbegfinstmtguide), [CFA Institute's financial analysis techniques overview](https://www.cfainstitute.org/insights/professional-learning/refresher-readings/2026/financial-analysis-techniques), and OpenStax's [liquidity](https://openstax.org/books/principles-finance-2e/pages/6-3-liquidity-ratios) and [profitability](https://openstax.org/books/principles-finance-2e/pages/6-6-profitability-ratios-and-the-dupont-method) chapters. It is not a substitute for the complete book or verified exam-year LOS coverage.
+The current layout was exercised on the supplied 2026 Level I Financial Statement Analysis book: 12 modules and 53 learning outcomes, producing two 133-slide decks and two 45-page handouts. That private run, source books, extraction, examples and QA evidence remain under ignored `demo/` and are not distributed. These counts describe that run; the skill derives scope and page count from each user's selected curriculum. Installation alone does not supply CFA study content.
 
 ## Limits and reuse
 

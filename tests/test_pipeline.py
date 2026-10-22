@@ -78,6 +78,8 @@ class ContractTests(unittest.TestCase):
         concepts = [copy.deepcopy(self.data['concepts'][0]) for _ in range(4)]
         for i, c in enumerate(concepts):
             c.update(id=f'TEST-{i+1:02}', notes=f'Unique note for slide {i+1}. Check the denominator and the units.')
+            c['module'] = 'First module' if i < 3 else 'Second module'
+        concepts[0]['notes'] = '核对同一期间的分子和分母，确保单位一致。比较不同企业时，注意计量基础和期末余额的可比性。'
         self.data['concepts'] = concepts
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -92,6 +94,14 @@ class ContractTests(unittest.TestCase):
             with fitz.open(tmp / 'handout.pdf') as doc:
                 self.assertNotIn('TEST-02', doc[1].get_text())
                 self.assertEqual(doc[0].rect, fitz.Rect(0, 0, 612, 792))
+                self.assertEqual(doc.get_toc(), [[1, 'First module', 1], [1, 'Second module', 2]])
+                for page, expected in zip(doc, [3, 1]):
+                    frames = [d for d in page.get_drawings()
+                              if d.get('width') == 1.5 and abs(d['rect'].width - 396) < .01]
+                    self.assertEqual(len(frames), expected)
+                note = doc[0].get_text(clip=fitz.Rect(438, 42, 584, 267))
+                self.assertTrue(all(not line or line[0] not in '。，、；：！？）》】」』'
+                                    for line in note.splitlines()))
             with self.assertRaisesRegex(ValueError, 'thumbnail order'):
                 p.audit_handout(tmp / 'handout.pdf', list(reversed(concepts)))
 
